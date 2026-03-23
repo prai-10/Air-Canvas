@@ -1,0 +1,570 @@
+ 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AirCanvas - Draw in the Air with Your Hand</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+        }
+
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+        }
+
+        #scene-canvas {
+            pointer-events: auto;
+            z-index: 1;
+        }
+
+        #draw-canvas {
+            z-index: 2;
+        }
+
+        #hand-canvas {
+            z-index: 3;
+        }
+
+        #camera-preview {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 240px;
+            height: 180px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            z-index: 10;
+            transition: all 0.3s ease;
+            cursor: move;
+            user-select: none;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        #camera-preview.expanded {
+            width: 480px;
+            height: 360px;
+        }
+
+        #camera-preview.dragging {
+            opacity: 0.8;
+            transition: none;
+        }
+
+        #camera-preview.custom-position {
+            transform: none;
+            bottom: auto;
+            right: auto;
+        }
+
+        #preview-video, #preview-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #preview-canvas {
+            z-index: 2;
+        }
+
+        #preview-expand-btn {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            width: 32px;
+            height: 32px;
+            background: rgba(0, 0, 0, 0.6);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            color: white;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 3;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(5px);
+        }
+
+        #preview-expand-btn:hover {
+            background: rgba(0, 0, 0, 0.8);
+            border-color: rgba(255, 255, 255, 0.5);
+            transform: scale(1.1);
+        }
+
+        #ui-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 20px;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        #color-palette {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 15px;
+            background: rgba(30, 30, 40, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 15px 25px;
+            border-radius: 60px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 30;
+            pointer-events: auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .color-swatch {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 2px solid transparent;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .color-swatch:hover {
+            transform: scale(1.2);
+        }
+
+        .color-swatch.active {
+            border-color: white;
+            transform: scale(1.1);
+            box-shadow: 0 0 15px currentColor;
+        }
+
+        #clear-all-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            padding: 12px 24px;
+            background: rgba(30, 30, 40, 0.8);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 40px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            z-index: 30;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            pointer-events: auto;
+        }
+
+        #clear-all-btn:hover {
+            background: rgba(50, 50, 60, 0.9);
+            transform: translateY(-2px);
+        }
+
+        #invite-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 40px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            z-index: 30;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            pointer-events: auto;
+        }
+
+        #invite-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        #connection-status {
+            position: fixed;
+            top: 90px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            background: rgba(30, 30, 40, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 40px;
+            color: white;
+            font-size: 14px;
+            z-index: 30;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            pointer-events: auto;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #666;
+        }
+
+        .status-dot.connected {
+            background: #4CAF50;
+            box-shadow: 0 0 10px #4CAF50;
+        }
+
+        .status-dot.connecting {
+            background: #FFC107;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.1); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        #status-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            color: white;
+            padding: 16px 32px;
+            border-radius: 60px;
+            font-size: 18px;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        #status-message.visible {
+            opacity: 1;
+        }
+
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            transition: opacity 0.5s ease;
+        }
+
+        #loading-overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loader {
+            text-align: center;
+            color: white;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-content {
+            background: rgba(30, 30, 40, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 40px;
+            border-radius: 24px;
+            color: white;
+            min-width: 400px;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            animation: slideUp 0.3s ease;
+            position: relative;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .room-code {
+            font-size: 48px;
+            font-weight: bold;
+            letter-spacing: 12px;
+            margin: 20px 0;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 16px;
+            font-family: monospace;
+        }
+
+        .join-section {
+            margin-top: 30px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .join-input {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .join-input input {
+            flex: 1;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: white;
+            font-size: 18px;
+            text-align: center;
+            letter-spacing: 4px;
+            font-family: monospace;
+        }
+
+        .join-input input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .join-input input::placeholder {
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        .join-input button {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .join-input button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            color: white;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: rotate(90deg);
+        }
+
+        .copy-btn {
+            margin-top: 10px;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        @media (max-width: 768px) {
+            #camera-preview {
+                width: 160px;
+                height: 120px;
+            }
+            
+            #camera-preview.expanded {
+                width: 320px;
+                height: 240px;
+            }
+            
+            #color-palette {
+                gap: 8px;
+                padding: 10px 15px;
+            }
+            
+            .color-swatch {
+                width: 35px;
+                height: 35px;
+            }
+            
+            .modal-content {
+                min-width: 300px;
+                padding: 30px;
+            }
+
+            #clear-all-btn, #invite-btn {
+                padding: 8px 16px;
+                font-size: 14px;
+            }
+        }
+
+        #webcam {
+            position: fixed;
+            top: -9999px;
+            left: -9999px;
+            width: 640px;
+            height: 480px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Hidden webcam element for hand tracking -->
+    <video id="webcam" playsinline></video>
+
+    <!-- Canvas layers -->
+    <canvas id="scene-canvas"></canvas>
+    <canvas id="draw-canvas"></canvas>
+    <canvas id="hand-canvas"></canvas>
+
+    <!-- Camera preview -->
+    <div id="camera-preview">
+        <video id="preview-video" playsinline></video>
+        <canvas id="preview-canvas"></canvas>
+        <div id="preview-expand-btn">⤢</div>
+    </div>
+
+    <!-- UI Overlay -->
+    <div id="ui-overlay">
+        <button id="clear-all-btn">Clear All</button>
+        <button id="invite-btn">Invite Friend</button>
+        
+        <div id="connection-status">
+            <span class="status-dot" id="status-dot"></span>
+            <span id="status-text">Not connected</span>
+        </div>
+    </div>
+
+    <!-- Color palette -->
+    <div id="color-palette">
+        <div class="color-swatch active" data-color="#FFB3BA" style="background: #FFB3BA;"></div>
+        <div class="color-swatch" data-color="#FFFFBA" style="background: #FFFFBA;"></div>
+        <div class="color-swatch" data-color="#BAFFC9" style="background: #BAFFC9;"></div>
+        <div class="color-swatch" data-color="#BAE1FF" style="background: #BAE1FF;"></div>
+        <div class="color-swatch" data-color="#E8BAFF" style="background: #E8BAFF;"></div>
+    </div>
+
+    <!-- Status message -->
+    <div id="status-message"></div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay">
+        <div class="loader">
+            <div class="spinner"></div>
+            <h2>Starting AirCanvas...</h2>
+            <p>Please allow camera access when prompted</p>
+        </div>
+    </div>
+
+    <!-- Invite modal -->
+    <div id="invite-modal" class="modal">
+        <div class="modal-content">
+            <div class="close-btn" id="modal-close">✕</div>
+            <h2>Invite a Friend</h2>
+            <p style="margin: 20px 0; color: rgba(255,255,255,0.8);">Share this room code:</p>
+            <div class="room-code" id="room-code">------</div>
+            <button class="copy-btn" id="copy-code-btn">📋 Copy Code</button>
+            
+            <div class="join-section">
+                <h3>Join a Room</h3>
+                <div class="join-input">
+                    <input type="text" id="join-code-input" maxlength="6" placeholder="Enter code" autocomplete="off">
+                    <button id="join-room-btn">Join</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import main TypeScript file -->
+    <script type="module" src="/main.ts"></script>
+</body>
+</html>

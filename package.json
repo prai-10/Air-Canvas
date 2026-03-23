@@ -1,0 +1,22 @@
+{
+  "name": "aircanvas",
+  "version": "1.0.0",
+  "description": "Draw in the air with hand tracking",
+  "main": "main.ts",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mediapipe/hands": "0.4.1675469240",
+    "gsap": "^3.11.5",
+    "peerjs": "1.4.7",
+    "three": "0.128.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.128.0",
+    "typescript": "^4.9.5",
+    "vite": "^4.3.9"
+  }
+}
